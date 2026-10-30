@@ -91,12 +91,21 @@ void CommonSubExpressionOptimizer::CountExpressions(Expression &expr, CSEReplace
 	}
 	case ExpressionClass::BOUND_OPERATOR: {
 		const auto save_inside_try = state.inside_try;
+		const auto save_short_circuit = state.short_circuited;
 		const auto expression_type = expr.GetExpressionType();
 		if (expression_type == ExpressionType::OPERATOR_TRY || expression_type == ExpressionType::OPERATOR_HAS_ERROR) {
 			state.inside_try = true;
 		}
-		ExpressionIterator::EnumerateChildren(expr, [&](Expression &child) { CountExpressions(child, state); });
+		// COALESCE only evaluates an argument for the rows where all previous arguments are NULL
+		const bool is_coalesce = expression_type == ExpressionType::OPERATOR_COALESCE;
+		ExpressionIterator::EnumerateChildren(expr, [&](Expression &child) {
+			CountExpressions(child, state);
+			if (is_coalesce) {
+				state.short_circuited = true;
+			}
+		});
 		state.inside_try = save_inside_try;
+		state.short_circuited = save_short_circuit;
 		break;
 	}
 	default:
