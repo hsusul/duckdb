@@ -1,0 +1,28 @@
+# name: test/sql/optimizer/cse_coalesce_short_circuit.test
+# description: Common subexpression extraction must not evaluate later COALESCE arguments for every row
+# group: [optimizer]
+
+statement ok
+CREATE TABLE t(s VARCHAR);
+
+statement ok
+INSERT INTO t VALUES ('3'), ('abc');
+
+query II
+SELECT s, coalesce(CASE WHEN s = 'abc' THEN 0 END, CAST(s AS INTEGER) * CAST(s AS INTEGER)) FROM t ORDER BY s
+----
+3	9
+abc	0
+
+# the IN list is rewritten into an OR of comparisons that repeat the cast
+query II
+SELECT s, coalesce(CASE WHEN s = 'abc' THEN true END, CAST(s AS INTEGER) IN (1, 3)) FROM t ORDER BY s
+----
+3	true
+abc	true
+
+query II
+SELECT s, coalesce(CASE WHEN s = 'abc' THEN false END, CAST(s AS INTEGER) > 0 AND CAST(s AS INTEGER) < 5) FROM t ORDER BY s
+----
+3	true
+abc	false
